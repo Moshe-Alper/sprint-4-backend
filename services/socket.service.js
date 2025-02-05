@@ -1,12 +1,15 @@
 import { Server } from 'socket.io'
 import { logger } from './logger.service.js'
 
-var gIo = null
+let gIo = null
 
 export function setupSocketAPI(http) {
     gIo = new Server(http, {
         cors: {
-            origin: '*',
+            origin: process.env.NODE_ENV === 'production' 
+                ? ['your-production-domain'] 
+                : ['http://localhost:5173', 'http://localhost:3000'],
+            credentials: true
         }
     })
 
@@ -17,6 +20,29 @@ export function setupSocketAPI(http) {
             logger.info(`Socket disconnected [id: ${socket.id}]`)
         })
 
+        // Board-related events
+        socket.on('board-join', boardId => {
+            if (socket.boardId === boardId) return
+            if (socket.boardId) {
+                socket.leave(socket.boardId)
+                logger.info(`Socket is leaving board ${socket.boardId} [id: ${socket.id}]`)
+            }
+            socket.join(boardId)
+            socket.boardId = boardId
+            logger.info(`Socket is joining board ${boardId} [id: ${socket.id}]`)
+        })
+
+        socket.on('board-update', ({ boardId, updatedBoard }) => {
+            logger.info(`Board updated: ${boardId}`)
+            socket.broadcast.to(boardId).emit('board-updated', updatedBoard)
+        })
+
+        socket.on('card-move', ({ boardId, card }) => {
+            logger.info(`Card moved: ${card.id} on board ${boardId}`)
+            socket.broadcast.to(boardId).emit('card-moved', card)
+        })
+
+        // Task and Comment events
         socket.on('join-task', taskId => {
             if (socket.myTask === taskId) return
             if (socket.myTask) {
@@ -61,6 +87,7 @@ export function setupSocketAPI(http) {
             socket.broadcast.to(socket.myTask).emit('comment-removed', updatedTask)
         })
 
+        // User session management
         socket.on('set-user-socket', userId => {
             logger.info(`Setting socket.userId = ${userId} for socket [id: ${socket.id}]`)
             socket.userId = userId
@@ -83,7 +110,7 @@ async function emitToUser({ type, data, userId }) {
     const socket = await _getUserSocket(userId)
 
     if (socket) {
-        logger.info(`Emiting event: ${type} to user: ${userId} socket [id: ${socket.id}]`)
+        logger.info(`Emitting event: ${type} to user: ${userId} socket [id: ${socket.id}]`)
         socket.emit(type, data)
     } else {
         logger.info(`No active socket for user: ${userId}`)
