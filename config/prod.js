@@ -4,4 +4,4 @@ export default {
 
   dbURL: 'mongodb+srv://team:Mszueq2PSuzrZVCd@cluster0.ktgte.mongodb.net/',
   dbName: 'board_db',
-};
+}
